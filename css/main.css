@@ -56,9 +56,60 @@ textarea {
    Author's custom styles
    ========================================================================== */
 
+body {
+    background: linear-gradient(#ffe259, #ffa751);
+    font-family: 'Raleway', sans-serif;
 
+}
+.main-content {
+    margin:0 auto;
+    min-height: 600px;
+    min-width: 600px;
+    width: 800px;
+    height: 800px;
+    display:flex;
+    flex-flow: row;
+}
+.main-content > h1 {
+    font-size: 24px;
+}
+.left-content {
+    display: flex;
+    flex-flow: column;
+    padding: 20px;
+}
+.right-content {
+    display: flex;
+    padding: 20px;
+    flex-direction: column;
+}
 
+.right-content .headshot >img {
+    width: 200px;
+    height: 200px;
+    border-radius: 50%
+}
 
+.right-content .item {
+    margin: 5px;
+    display: flex;
+    justify-content: space-around;
+}
+
+.right-content .item  img {
+    width: 20px;
+    height: 20px;
+}
+
+.right-content a {
+   text-decoration: none;
+   color: black;
+}
+.links {
+    display:flex;
+    flex-direction: column;
+    margin-top: 20px;
+}
 
 
 
