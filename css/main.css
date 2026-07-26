@@ -178,6 +178,76 @@ h1 {
 
 
 
+/* Projects + Writing sections */
+.projects,
+.blog {
+    width: 100%;
+    padding: 12px 0 40px;
+}
+
+.section-head {
+    margin: 0 0 20px;
+    font-size: 1.7rem;
+    font-weight: 700;
+    line-height: 1.1;
+}
+
+.coming-soon {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 500;
+    color: #333333;
+}
+
+.project-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+}
+
+.project-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 20px 22px;
+    border: 2px solid #111111;
+    border-radius: 16px;
+    color: #111111;
+    text-decoration: none;
+    transition: transform 0.12s ease, background 0.12s ease, color 0.12s ease;
+}
+
+.project-card:hover,
+.project-card:focus {
+    background: #111111;
+    color: #fcd12a;
+    transform: translateY(-2px);
+    outline: none;
+}
+
+.project-name {
+    font-size: 1.4rem;
+    font-weight: 700;
+}
+
+.project-desc {
+    font-size: 1rem;
+    font-weight: 500;
+    line-height: 1.55;
+}
+
+.project-go {
+    margin-top: 2px;
+    font-size: 0.95rem;
+    font-weight: 650;
+}
+
+@media only screen and (max-width: 620px) {
+    .project-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
 /* ==========================================================================
    Media Queries
    ========================================================================== */
