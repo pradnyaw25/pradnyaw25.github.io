@@ -114,49 +114,53 @@
                     <tr><td>6</td><td>Engineering cost: Rust costs the most lines and the longest build</td><td><strong>Half right.</strong> Rust and Go cost the same lines; Rust's cost is the dependency graph and the build.</td></tr>
                 </table></div>
 
-                <h2>The one chart</h2>
+                <h2>The experiment in one chart</h2>
                 <figure>
-                    <img src="charts/01-where-rust-wins.gif" alt="Heatmap of ratios against Rust across seven workloads and four metrics">
-                    <figcaption>Every cell is a ratio against Rust on the same workload. Blue: Rust is better by that factor. Orange: the alternative won. Grey: the language did not matter. <a href="charts/01-where-rust-wins.png">Full-size still</a>.</figcaption>
+                    <img src="charts/simple/s1-rust-advantage.png" alt="Throughput of Rust, Go and Python on four workloads, each as a share of the fastest">
+                    <figcaption>Each group is one workload; each bar is that language's throughput as a share of the fastest on that workload, with the real requests per second on it.</figcaption>
                 </figure>
-                <p>Read it by rows. The bottom two, where the request is waiting on something, are grey everywhere except the CPU and memory columns. The language does not decide how fast a waiting request goes. It decides what it costs while it waits. Read the Go column and a second pattern appears: on ordinary endpoints Go's throughput is a tie with Rust (1.0× on the lookup across four runs), and Rust's edge is in the p99, CPU and memory columns.</p>
+                <p>Read it top to bottom. On CPU-bound work Rust is well ahead. On a simple lookup Rust and Go are tied (1.0× across four runs). On a request that is waiting on something, all three are within 9% and Rust is last. The language does not decide how fast a waiting request goes. It decides what it costs while it waits, and that is where Rust's edge over Go lives: in p99, CPU per request and memory, not in requests per second on ordinary endpoints.</p>
 
                 <h2>Where Rust wins</h2>
                 <h3>1. CPU on the request path</h3>
                 <figure>
-                    <img src="charts/02-throughput.gif" alt="Throughput per workload for the four implementations">
-                    <figcaption>Requests per second at 64 connections. Each panel has its own scale. <a href="charts/02-throughput.png">Still</a>.</figcaption>
+                    <img src="charts/02-throughput.png" alt="Throughput per workload for the four implementations">
+                    <figcaption>Requests per second at 64 connections, all seven workloads. Each panel has its own scale; whiskers are the min–max across runs.</figcaption>
                 </figure>
                 <p>On 5,000 rounds of SHA-256 per request, Rust served 20,468 requests a second (19.2k–23.7k across runs). Go served 10,975, ten-worker Python 3,135, one-worker Python 927. That is 1.9× Go and 6.5× Python with every core lit. Ten Python workers gave 3.4× the throughput of one, not 10×, because each worker's threadpool still serialises on its own GIL and the ten processes contend with each other and with the load generator.</p>
                 <p>Past saturation is where the difference stops being a factor and becomes a behaviour:</p>
                 <figure>
-                    <img src="charts/06-overload.gif" alt="Under CPU overload: deadline misses, p99 and throughput for each implementation">
-                    <figcaption>500 concurrent clients, 20,000 hash rounds per request, a 1-second timeout. <a href="charts/06-overload.png">Still</a>.</figcaption>
+                    <img src="charts/simple/s2-overload.png" alt="Share of requests that missed a 1-second deadline under CPU overload">
+                    <figcaption>500 concurrent clients, 20,000 hash rounds per request, a 1-second timeout.</figcaption>
                 </figure>
                 <p>Rust missed the deadline on 0 requests in every run, with a p99 of 174 ms. Go missed 0.21% with a p99 of 707 ms. Ten-worker Python missed 7.95% at the median and anywhere from 0.45–21.47% run to run; one-worker Python 63.30%. The detail I find most interesting: Go's <em>median</em> under overload (69 ms) is close to Rust's (59 ms) while its p99 is 707 ms against 174. Go's scheduler keeps most requests moving and lets a tail of them wait out the deadline. Tokio's work-stealing spreads the delay evenly across every in-flight request. If you have an SLO, evenly is what you want.</p>
                 <p>Under <em>connection</em> overload rather than CPU overload (1,000 concurrent clients on the lookup endpoint), Rust, Go and ten-worker Python all served every request. Single-worker Python timed out 2.31%.</p>
 
                 <h3>2. Tail latency</h3>
                 <figure>
-                    <img src="charts/03-tail-latency.gif" alt="Dumbbell chart from p50 to p99 per implementation and workload">
-                    <figcaption>Left dot p50, right dot p99. A short bar is a predictable service; a long one is a service whose median lies to you. <a href="charts/03-tail-latency.png">Still</a>.</figcaption>
+                    <img src="charts/simple/s3-tail-latency.png" alt="Median to p99 latency on a simple lookup for each implementation">
+                    <figcaption>Left dot p50, right dot p99 on the lookup endpoint. A short line is a predictable service; a long one is a service whose median lies to you.</figcaption>
                 </figure>
                 <p>On the lookup endpoint, Rust's p99 is 0.91 ms and 2.6× its median. Go's is 1.98 ms at 6.5×. Ten-worker Python's is 5.30 ms at 8.5×. Rust's lookup p99 ranged from 0.71–2.04 ms across the four runs, so its median is the fair number and the comparison holds at the worst run too. Single-worker Python has a flat tail (2.0×) but a median six times higher, which is a different kind of slow. Go's p95 is where its garbage collector becomes visible: 0.89 ms against a 0.30 ms median. On the CPU endpoint the gap between Go's median and its p99 opens to 23.8× (1.60 ms to 38.16 ms); Rust's stays at 2.0×. If your SLO is written against p99 rather than the median, Rust is the only one of the three whose tail stays flat under load.</p>
 
                 <h3>3. Density: CPU and memory per request</h3>
                 <figure>
-                    <img src="charts/04-cpu-per-1k.gif" alt="CPU milliseconds per 1,000 requests by workload">
-                    <figcaption>Server CPU-milliseconds per 1,000 requests. Lower is better. <a href="charts/04-cpu-per-1k.png">Still</a>.</figcaption>
+                    <img src="charts/04-cpu-per-1k.png" alt="CPU milliseconds per 1,000 requests by workload">
+                    <figcaption>Server CPU-milliseconds per 1,000 requests, all seven workloads. Lower is better.</figcaption>
                 </figure>
                 <p>Per 1,000 lookups, Rust spends 22 ms of CPU, Go 29, ten-worker Python 96. On the I/O endpoint, where throughput is equal, the CPU cost is not: Rust 31 ms, Go 64, Python 110. That is the number Anthropic's 70% is made of.</p>
                 <figure>
-                    <img src="charts/05-memory.gif" alt="Idle RSS, peak RSS under load and memory per idle connection">
-                    <figcaption>RSS summed over the process tree. <a href="charts/05-memory.png">Still</a>.</figcaption>
+                    <img src="charts/simple/s5-memory.png" alt="Idle memory of each implementation">
+                    <figcaption>Resident memory of the whole process tree before any load.</figcaption>
                 </figure>
                 <p>Idle memory: Rust 9.9 MB, Go 13.4 MB, one Python worker 66.0 MB, ten Python workers 710.7 MB, which is 72× Rust. Under load Rust holds 13 to 15 MB where Go holds 2.2× that and ten-worker Python 53.8×. Across a fleet, that is the bill.</p>
 
                 <h2>Where Rust does not win</h2>
                 <h3>I/O-bound endpoints</h3>
+                <figure>
+                    <img src="charts/simple/s4-io-bound.png" alt="Throughput on a 10 ms wait, nearly equal for all four implementations">
+                    <figcaption>Requests per second on the 10 ms async wait against the theoretical ceiling of 64 connections ÷ 10 ms.</figcaption>
+                </figure>
                 <p>On the 10 ms wait, all four implementations land between 5.2k and 5.7k requests per second, a spread of 9%, with p99 between 12.7 and 14.6 ms. The theoretical ceiling with 64 connections and a 10 ms wait is 6,400 per second, and everyone is near it. Rust is last. Tokio's <code>sleep(10 ms)</code> completes in about 12.3 ms on this macOS build even with a single connection, while Go's timer and uvloop's sleep for about 11.3 ms. The <code>mixed</code> endpoint tells the same story: Go 10.9k, Python 10.2k, Rust 8.6k requests per second. If your service is "call the database and return the result", Rust buys you 2.1× to 3.5× less CPU and 2.0× to 54.7× less memory <em>while you wait</em>. It does not buy you speed.</p>
                 <h3>Serialization</h3>
                 <p>On the 200-item list, Rust is 1.1× Go and 1.6× tuned Python (60.2k vs 54.1k vs 37.5k requests per second). Serde is fast; so are <code>encoding/json</code> and orjson. Serialization alone is not a reason to choose Rust.</p>
@@ -165,8 +169,8 @@
 
                 <h2>Two one-line changes</h2>
                 <figure>
-                    <img src="charts/08-tuning.gif" alt="Before and after throughput for the two framework defaults the first run exposed">
-                    <figcaption>Hollow dot: framework default. Filled dot: after the change. <a href="charts/08-tuning.png">Still</a>.</figcaption>
+                    <img src="charts/simple/s6-tuning.png" alt="Before and after throughput for the two framework defaults the first run exposed">
+                    <figcaption>Hollow dot: framework default. Filled dot: after the change.</figcaption>
                 </figure>
                 <p>I kept the first run, with every framework at its defaults, in the repo on purpose, because the gap between it and the final numbers is a result.</p>
                 <p><strong>FastAPI.</strong> In the baseline, Python's <code>list</code> endpoint was 14× slower than Rust and burned 1.7 ms of CPU per request. That is not orjson being slow. A handler that returns a dict goes through FastAPI's pure-Python <code>jsonable_encoder</code> before the response class serializes it, and on 200 dicts that pass costs more than everything else in the request combined. Returning <code>ORJSONResponse(...)</code> directly from the handler skips it. One line per handler took Python's list throughput from 5.2k to 37.5k requests per second (7.3×) and the gap to Rust from 14× to 1.6×. If you run FastAPI in production and have never checked which path your responses take, check.</p>
@@ -186,13 +190,17 @@
 
                 <h2>What it costs</h2>
                 <figure>
-                    <img src="charts/07-complexity.gif" alt="Lines of code, dependencies, cold start and build time per implementation">
-                    <figcaption><a href="charts/07-complexity.png">Still</a>.</figcaption>
+                    <img src="charts/07-complexity.png" alt="Lines of code, dependencies, cold start and build time per implementation">
+                    <figcaption>Lines for the identical contract, transitive dependencies, cold start and clean build time.</figcaption>
                 </figure>
                 <p>Rust and Go took the same number of lines for the same contract: 177 and 182. Python took 93. Rust ships 93 transitive crates; Go ships 0; Python 21 packages. A clean release build is 13.7 s for Rust with LTO on and 3.2 s for Go, and the gap widens with project size. Artifacts are 1.3 MB and 9.3 MB. Cold start to first healthy response: 10 ms for Rust, 13 ms for Go, 173 ms for one Python worker, 416 ms for ten.</p>
                 <p>Go is the honest competitor in this study. On ordinary endpoints its throughput is a tie with Rust: 166.2k against 163.6k requests per second on the lookup, within 10% on the list and the write. Its gaps are the CPU ceiling (1.9×), the p99 (2.2× on the lookup, 6.2× under CPU load), and the per-request CPU and memory (1.4× and 2.2×), all with zero dependencies, a 3.2-second build and the same line count. The reason to pick Rust over Go is the ceiling and the tail, not the throughput on the endpoints most services are made of.</p>
 
                 <h2>Every number in one place</h2>
+                <figure>
+                    <img src="charts/01-where-rust-wins.png" alt="Heatmap: every language compared to Rust on every workload, for throughput, p99, CPU and memory">
+                    <figcaption>The full matrix. Each cell is one language measured against the Rust baseline on the same workload. Blue: Rust did better by that factor. Orange: the other language did better. Grey: no real difference.</figcaption>
+                </figure>
                 <p>Medians of 4 runs. The full report with p95, p99.9, max, CPU utilisation, memory growth per request and the min–max spread per cell is <a href="https://github.com/pradnyaw25/api-performance-lab/blob/main/results/REPORT.md">in the repo</a>.</p>
                 <div class="scroll"><table>
                     <tr><th>Scenario</th><th class="num">Rust req/s</th><th class="num">Go</th><th class="num">Python ×10</th><th class="num">Python ×1</th><th class="num">Rust p99 ms</th><th class="num">Go</th><th class="num">Python ×10</th><th class="num">Python ×1</th></tr>
