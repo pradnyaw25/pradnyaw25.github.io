@@ -1,0 +1,251 @@
+<!doctype html>
+<html class="no-js" lang="en">
+    <head>
+        <meta charset="utf-8">
+        <title>Benchmarking API Performance: Python vs Go vs Rust · Pradnya Wakchaure</title>
+        <meta name="description" content="Inspired by Anthropic's Messages API migration to Rust, I built the same API in Rust, Go and Python and measured seven workloads on nine metrics. Rust wins on CPU-bound work and tail latency; when the request is waiting on I/O, the language barely matters.">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta property="og:title" content="Benchmarking API Performance: Python vs Go vs Rust">
+        <meta property="og:description" content="Same API, three production stacks, one laptop. Where Rust wins, where it does not, and the two one-line changes that moved the numbers more than the language did.">
+        <meta property="og:image" content="https://pradnya.dev/blog/api-performance-lab/charts/00-social-card.png">
+        <meta property="og:type" content="article">
+        <meta name="twitter:card" content="summary_large_image">
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
+        <link rel="stylesheet" href="/css/normalize.min.css">
+        <link rel="stylesheet" href="/css/main.css?v=3">
+        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+        <script async src="https://www.googletagmanager.com/gtag/js?id=G-8QL02M819M"></script>
+        <script>
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+            gtag('config', 'G-8QL02M819M');
+        </script>
+        <style>
+            /* Post-only styles; everything else comes from the site's main.css. */
+            .post { width: min(820px, calc(100% - 40px)); margin: 0 auto; padding: 40px 0 80px; }
+            .post .back { display: inline-block; margin-bottom: 28px; font-weight: 650; text-decoration: none; color: #111; }
+            .post .back:hover { background: #111; color: #fcd12a; }
+            .post h1 { font-size: clamp(2rem, 6vw, 3.2rem); line-height: 1.05; margin: 0 0 14px; }
+            .post .dek { font-size: 1.2rem; font-weight: 500; color: #333; line-height: 1.5; margin: 0 0 10px; }
+            .post .meta { color: #555; font-style: italic; font-weight: 500; margin: 0 0 34px; }
+            .post h2 { font-size: 1.55rem; margin: 44px 0 12px; line-height: 1.15; }
+            .post h3 { font-size: 1.2rem; margin: 30px 0 8px; }
+            .post p, .post li { font-size: 1.08rem; font-weight: 500; line-height: 1.7; color: #222; }
+            .post p { margin: 0 0 18px; }
+            .post ul, .post ol { padding-left: 1.2em; margin: 0 0 18px; }
+            .post li { margin-bottom: 6px; }
+            .post code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92em; background: rgba(17,17,17,0.08); padding: 1px 5px; border-radius: 4px; }
+            .post pre { background: #111; color: #fcd12a; padding: 14px 16px; border-radius: 8px; overflow-x: auto; font-size: 0.95rem; line-height: 1.5; margin: 0 0 20px; }
+            .post pre code { background: none; color: inherit; padding: 0; }
+            .post figure { margin: 26px 0 30px; }
+            .post figure img { width: 100%; height: auto; border: 2px solid #111; border-radius: 6px; background: #fcfcfb; }
+            .post figcaption { margin-top: 8px; font-size: 0.95rem; color: #444; font-weight: 500; }
+            .post figcaption a { color: #111; }
+            .post table { width: 100%; border-collapse: collapse; margin: 0 0 22px; font-size: 0.98rem; font-weight: 500; }
+            .post th, .post td { text-align: left; padding: 7px 9px; border-bottom: 1.5px solid #111; vertical-align: top; }
+            .post th { font-weight: 700; }
+            .post td.num, .post th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+            .post .callout { border: 2px solid #111; border-radius: 8px; padding: 14px 18px; margin: 0 0 22px; background: rgba(255,255,255,0.35); }
+            .post .callout p:last-child { margin: 0; }
+            .post .foot { margin-top: 48px; padding-top: 18px; border-top: 2px solid #111; }
+            .post .scroll { overflow-x: auto; }
+        </style>
+    </head>
+    <body>
+        <main class="post">
+            <a class="back" href="/">← pradnya.dev</a>
+            <article>
+                <h1>Benchmarking API Performance: Python vs Go vs Rust</h1>
+                <p class="dek">Same API, three production stacks, nine metrics. Where Rust actually matters, and where it doesn't. I built the same API in Rust, Go and Python with each ecosystem's production stack, wrote down six hypotheses, and measured seven workloads on nine metrics across 4 full runs. Rust wins on CPU-bound work and tail latency, the language barely matters when the request is waiting on I/O, and two one-line changes moved the numbers more than the language did.</p>
+                <p class="meta">November 2026 · 18 minute read · <a href="https://github.com/pradnyaw25/api-performance-lab">code, harness and raw data</a></p>
+
+                <h2>Why I did this</h2>
+                <p>On 25 November 2026 Anthropic published <a href="https://www.anthropic.com/research/migrating-api-to-rust">Migrating our Messages API to Rust</a>, describing a full rewrite of their Messages API from Python to Rust. The numbers they report are the kind that get a language chosen: about 70% less CPU per request, more than 80% less memory per request, and roughly 20% lower median time to first token, after public traffic moved to Rust in September 2026. Their CPU figure is for one region and their latency figure is from a subset of Claude Code traffic, and their post is about the verification work far more than about Rust itself. It is a production migration at a scale where traffic had grown roughly 1,800× in under three years.</p>
+                <p>That post made me want to know the <em>shape</em> of that gain. "Rust is faster than Python" is true and useless. Which kinds of request get faster, by how much, which parts of the gain are the language, which parts are the runtime, which parts are a library choice, and what does it cost in code, dependencies and build time? Those questions can be answered at small scale, on one machine, with everything else held constant. So I held everything else constant.</p>
+                <div class="callout">
+                    <p><strong>What this is and is not.</strong> This is a lab benchmark: one laptop, seven synthetic endpoints, ten seconds of load per cell, an in-memory store instead of a database. It is not the production traffic of a large service, and nothing here predicts what a migration like Anthropic's would yield. What it can do is isolate <em>where</em> the differences come from, which production numbers cannot.</p>
+                </div>
+
+                <h2>The setup</h2>
+                <h3>Same contract, three implementations</h3>
+                <div class="scroll"><table>
+                    <tr><th>Implementation</th><th>Stack</th><th class="num">Lines</th><th class="num">Deps</th></tr>
+                    <tr><td>Rust</td><td>Axum 0.8 on Tokio, serde_json, sha2 with the <code>asm</code> feature</td><td class="num">177</td><td class="num">93 crates</td></tr>
+                    <tr><td>Go</td><td>Standard library <code>net/http</code> with Go 1.22 routing, <code>encoding/json</code>, <code>crypto/sha256</code></td><td class="num">182</td><td class="num">0</td></tr>
+                    <tr><td>Python ×10</td><td>FastAPI on Uvicorn with uvloop, httptools and orjson; ten workers, one per core</td><td class="num">93</td><td class="num">21 packages</td></tr>
+                    <tr><td>Python ×1</td><td>The same code, one worker, so the cost of scaling Python stays visible</td><td class="num">93</td><td class="num">21 packages</td></tr>
+                </table></div>
+                <p>Every implementation serves the contract in <a href="https://github.com/pradnyaw25/api-performance-lab/blob/main/docs/API.md"><code>docs/API.md</code></a>: a store seeded with 10,000 items, and seven endpoints that each isolate one thing an API service spends time on.</p>
+                <div class="scroll"><table>
+                    <tr><th>Scenario</th><th>Endpoint</th><th>What it isolates</th></tr>
+                    <tr><td><code>health</code></td><td><code>GET /health</code></td><td>The framework and HTTP stack floor</td></tr>
+                    <tr><td><code>get</code></td><td><code>GET /items/{id}</code></td><td>Routing, a shared-state read, a small JSON encode</td></tr>
+                    <tr><td><code>list</code></td><td><code>GET /items?limit=200</code></td><td>Serializing 200 objects</td></tr>
+                    <tr><td><code>create</code></td><td><code>POST /items</code></td><td>JSON decode, validation, a write under a lock</td></tr>
+                    <tr><td><code>cpu</code></td><td><code>GET /compute/hash?n=5000</code></td><td>5,000 chained SHA-256 rounds on the request path, no I/O</td></tr>
+                    <tr><td><code>io</code></td><td><code>GET /io/wait?ms=10</code></td><td>A 10 ms async wait, no CPU</td></tr>
+                    <tr><td><code>mixed</code></td><td><code>GET /mixed</code></td><td>A 5 ms simulated database wait, 200 hash rounds, JSON</td></tr>
+                </table></div>
+                <h3>What the harness measures</h3>
+                <ul>
+                    <li><strong>Throughput and latency</strong> (p50, p95, p99, p99.9, max) from <code>oha</code> at 64 concurrent connections, 10 seconds per cell after a 3-second warm-up, in a fresh process per scenario so that the write-heavy <code>create</code> cannot inflate the memory of what runs after it.</li>
+                    <li><strong>Peak memory</strong> as resident set size summed over the process tree, sampled four times a second. Summing matters: ten Python workers are ten processes.</li>
+                    <li><strong>CPU per 1,000 requests</strong> from the process tree's CPU time delta across the run divided by completed requests. Equal throughput at 3× the CPU is 3× less headroom, so this is the cost side of every throughput number.</li>
+                    <li><strong>Cold start</strong>: process launch to first <code>200</code> from <code>/health</code>, polled every 2 ms, median of five starts.</li>
+                    <li><strong>Error rate under saturation</strong>: dedicated runs at 1,000 and 500 concurrent connections with a 1-second per-request timeout. Timeouts, resets, refused connections and non-2xx responses all count.</li>
+                    <li><strong>Memory per open connection</strong>: 1,000 keep-alive connections opened, one request each, held idle; the RSS growth divided by 1,000.</li>
+                    <li><strong>Recovery after a spike</strong>: probe latency from one client, a 5-second spike at 256 connections, probe again, 10 seconds idle, probe again, and how much of the spike's memory growth was still held.</li>
+                    <li><strong>Implementation complexity</strong>: lines for the identical contract, transitive dependencies, clean build time, artifact size, and the behaviour that differs despite the shared contract.</li>
+                </ul>
+                <p>One shared contract test, plain Python with no dependencies, runs against every implementation before the harness will benchmark it. If two implementations answer the same request differently, their numbers are not comparable, so the harness refuses. All of this ran on Apple M5 with 10 cores, with the load generator on the same machine. That understates every absolute number equally; read everything as relative. The numbers below are medians of 4 full runs; the report in the repo shows the min–max spread for every cell.</p>
+
+                <h2>Six hypotheses, written before the first run</h2>
+                <p>The point of writing them down first is to find out which ones are wrong.</p>
+                <div class="scroll"><table>
+                    <tr><th>#</th><th>Hypothesis</th><th>Verdict</th></tr>
+                    <tr><td>1</td><td>CPU-bound work: Rust and Go an order of magnitude ahead of Python; Rust leads Go by a small constant</td><td><strong>Mostly right, with a twist.</strong> Rust leads Go by 1.9×, not a small constant, and only after a library flag. With the <code>sha2</code> crate's default software SHA-256, Rust was slower than Go.</td></tr>
+                    <tr><td>2</td><td>I/O-bound work: all three converge; the differences are memory and tail, not throughput</td><td><strong>Confirmed, and Rust was the slowest.</strong></td></tr>
+                    <tr><td>3</td><td>Serialization: Rust &gt; Go &gt; Python, but orjson narrows the gap more than people expect</td><td><strong>Confirmed, dramatically</strong>, once FastAPI's default response path was bypassed.</td></tr>
+                    <tr><td>4</td><td>Tail latency: Rust has the flattest p99/p50; Go's tail shows the GC; Python degrades fastest</td><td><strong>Confirmed.</strong></td></tr>
+                    <tr><td>5</td><td>Memory: Rust &lt; Go ≪ Python × workers; the ratio matters for density</td><td><strong>Confirmed at the baseline, wrong per connection.</strong> Rust is the heaviest per idle connection.</td></tr>
+                    <tr><td>6</td><td>Engineering cost: Rust costs the most lines and the longest build</td><td><strong>Half right.</strong> Rust and Go cost the same lines; Rust's cost is the dependency graph and the build.</td></tr>
+                </table></div>
+
+                <h2>The one chart</h2>
+                <figure>
+                    <img src="charts/01-where-rust-wins.gif" alt="Heatmap of ratios against Rust across seven workloads and four metrics">
+                    <figcaption>Every cell is a ratio against Rust on the same workload. Blue: Rust is better by that factor. Orange: the alternative won. Grey: the language did not matter. <a href="charts/01-where-rust-wins.png">Full-size still</a>.</figcaption>
+                </figure>
+                <p>Read it by rows. The bottom two, where the request is waiting on something, are grey everywhere except the CPU and memory columns. The language does not decide how fast a waiting request goes. It decides what it costs while it waits. Read the Go column and a second pattern appears: on ordinary endpoints Go's throughput is a tie with Rust (1.0× on the lookup across four runs), and Rust's edge is in the p99, CPU and memory columns.</p>
+
+                <h2>Where Rust wins</h2>
+                <h3>1. CPU on the request path</h3>
+                <figure>
+                    <img src="charts/02-throughput.gif" alt="Throughput per workload for the four implementations">
+                    <figcaption>Requests per second at 64 connections. Each panel has its own scale. <a href="charts/02-throughput.png">Still</a>.</figcaption>
+                </figure>
+                <p>On 5,000 rounds of SHA-256 per request, Rust served 20,468 requests a second (19.2k–23.7k across runs). Go served 10,975, ten-worker Python 3,135, one-worker Python 927. That is 1.9× Go and 6.5× Python with every core lit. Ten Python workers gave 3.4× the throughput of one, not 10×, because each worker's threadpool still serialises on its own GIL and the ten processes contend with each other and with the load generator.</p>
+                <p>Past saturation is where the difference stops being a factor and becomes a behaviour:</p>
+                <figure>
+                    <img src="charts/06-overload.gif" alt="Under CPU overload: deadline misses, p99 and throughput for each implementation">
+                    <figcaption>500 concurrent clients, 20,000 hash rounds per request, a 1-second timeout. <a href="charts/06-overload.png">Still</a>.</figcaption>
+                </figure>
+                <p>Rust missed the deadline on 0 requests in every run, with a p99 of 174 ms. Go missed 0.21% with a p99 of 707 ms. Ten-worker Python missed 7.95% at the median and anywhere from 0.45–21.47% run to run; one-worker Python 63.30%. The detail I find most interesting: Go's <em>median</em> under overload (69 ms) is close to Rust's (59 ms) while its p99 is 707 ms against 174. Go's scheduler keeps most requests moving and lets a tail of them wait out the deadline. Tokio's work-stealing spreads the delay evenly across every in-flight request. If you have an SLO, evenly is what you want.</p>
+                <p>Under <em>connection</em> overload rather than CPU overload (1,000 concurrent clients on the lookup endpoint), Rust, Go and ten-worker Python all served every request. Single-worker Python timed out 2.31%.</p>
+
+                <h3>2. Tail latency</h3>
+                <figure>
+                    <img src="charts/03-tail-latency.gif" alt="Dumbbell chart from p50 to p99 per implementation and workload">
+                    <figcaption>Left dot p50, right dot p99. A short bar is a predictable service; a long one is a service whose median lies to you. <a href="charts/03-tail-latency.png">Still</a>.</figcaption>
+                </figure>
+                <p>On the lookup endpoint, Rust's p99 is 0.91 ms and 2.6× its median. Go's is 1.98 ms at 6.5×. Ten-worker Python's is 5.30 ms at 8.5×. Rust's lookup p99 ranged from 0.71–2.04 ms across the four runs, so its median is the fair number and the comparison holds at the worst run too. Single-worker Python has a flat tail (2.0×) but a median six times higher, which is a different kind of slow. Go's p95 is where its garbage collector becomes visible: 0.89 ms against a 0.30 ms median. On the CPU endpoint the gap between Go's median and its p99 opens to 23.8× (1.60 ms to 38.16 ms); Rust's stays at 2.0×. If your SLO is written against p99 rather than the median, Rust is the only one of the three whose tail stays flat under load.</p>
+
+                <h3>3. Density: CPU and memory per request</h3>
+                <figure>
+                    <img src="charts/04-cpu-per-1k.gif" alt="CPU milliseconds per 1,000 requests by workload">
+                    <figcaption>Server CPU-milliseconds per 1,000 requests. Lower is better. <a href="charts/04-cpu-per-1k.png">Still</a>.</figcaption>
+                </figure>
+                <p>Per 1,000 lookups, Rust spends 22 ms of CPU, Go 29, ten-worker Python 96. On the I/O endpoint, where throughput is equal, the CPU cost is not: Rust 31 ms, Go 64, Python 110. That is the number Anthropic's 70% is made of.</p>
+                <figure>
+                    <img src="charts/05-memory.gif" alt="Idle RSS, peak RSS under load and memory per idle connection">
+                    <figcaption>RSS summed over the process tree. <a href="charts/05-memory.png">Still</a>.</figcaption>
+                </figure>
+                <p>Idle memory: Rust 9.9 MB, Go 13.4 MB, one Python worker 66.0 MB, ten Python workers 710.7 MB, which is 72× Rust. Under load Rust holds 13 to 15 MB where Go holds 2.2× that and ten-worker Python 53.8×. Across a fleet, that is the bill.</p>
+
+                <h2>Where Rust does not win</h2>
+                <h3>I/O-bound endpoints</h3>
+                <p>On the 10 ms wait, all four implementations land between 5.2k and 5.7k requests per second, a spread of 9%, with p99 between 12.7 and 14.6 ms. The theoretical ceiling with 64 connections and a 10 ms wait is 6,400 per second, and everyone is near it. Rust is last. Tokio's <code>sleep(10 ms)</code> completes in about 12.3 ms on this macOS build even with a single connection, while Go's timer and uvloop's sleep for about 11.3 ms. The <code>mixed</code> endpoint tells the same story: Go 10.9k, Python 10.2k, Rust 8.6k requests per second. If your service is "call the database and return the result", Rust buys you 2.1× to 3.5× less CPU and 2.0× to 54.7× less memory <em>while you wait</em>. It does not buy you speed.</p>
+                <h3>Serialization</h3>
+                <p>On the 200-item list, Rust is 1.1× Go and 1.6× tuned Python (60.2k vs 54.1k vs 37.5k requests per second). Serde is fast; so are <code>encoding/json</code> and orjson. Serialization alone is not a reason to choose Rust.</p>
+                <h3>Memory per connection</h3>
+                <p>This inverted my hypothesis. Holding 1,000 idle keep-alive connections cost Rust 31.6 KB each, Go 22.9 KB, ten-worker Python 18.5 KB, single-worker Python 11.8 KB. Hyper's per-connection buffers are the largest of the three. For a 100,000-connection streaming fan-out that is 3.2 GB versus 2.3 GB versus 1.9 GB, which is to say none of them is the bottleneck; the fixed cost is.</p>
+
+                <h2>Two one-line changes</h2>
+                <figure>
+                    <img src="charts/08-tuning.gif" alt="Before and after throughput for the two framework defaults the first run exposed">
+                    <figcaption>Hollow dot: framework default. Filled dot: after the change. <a href="charts/08-tuning.png">Still</a>.</figcaption>
+                </figure>
+                <p>I kept the first run, with every framework at its defaults, in the repo on purpose, because the gap between it and the final numbers is a result.</p>
+                <p><strong>FastAPI.</strong> In the baseline, Python's <code>list</code> endpoint was 14× slower than Rust and burned 1.7 ms of CPU per request. That is not orjson being slow. A handler that returns a dict goes through FastAPI's pure-Python <code>jsonable_encoder</code> before the response class serializes it, and on 200 dicts that pass costs more than everything else in the request combined. Returning <code>ORJSONResponse(...)</code> directly from the handler skips it. One line per handler took Python's list throughput from 5.2k to 37.5k requests per second (7.3×) and the gap to Rust from 14× to 1.6×. If you run FastAPI in production and have never checked which path your responses take, check.</p>
+                <p><strong>Rust.</strong> In the baseline, Rust was <em>slower than Go</em> on the CPU endpoint: 8.4k requests per second against 14.7k. Go's standard-library <code>crypto/sha256</code> uses the ARM SHA-2 instructions out of the box. Rust's <code>sha2</code> crate defaults to a software implementation. Enabling its <code>asm</code> feature took Rust to 20.5k (2.4×) with an identical digest. The language sets the ceiling; the library decides whether you reach it, and Go's standard library reaches it by default more often than Rust's crate ecosystem does.</p>
+
+                <h2>Things I did not expect</h2>
+                <div class="callout">
+                    <p><strong>Ten-worker Python has no shared memory.</strong> The contract test found this before the benchmark did: an item created with a <code>POST</code> on one Uvicorn worker is a 404 on the other nine (1 hit in 10). Python's only route to all ten cores is ten processes, which means ten copies of every in-memory structure and no shared state without Redis or a database round-trip that Rust and Go do not need for the same feature. This is the biggest practical difference in the study and it is architectural, not a benchmark number.</p>
+                </div>
+                <ul>
+                    <li><strong>Nobody has a latency hangover, and memory retention is too noisy to rank.</strong> After the 5-second spike, the first probe's p99 was back at the pre-spike level for all four (Rust 0.16 → 0.11 ms, Go 0.18 → 0.13 ms). I had hoped to show which runtime gives memory back to the OS after a spike; the 10-second measurement does not support a ranking. Medians say Rust held 79% of the spike's growth, Go 98%, ten-worker Python 100% and single-worker Python ended below where it started, with run-to-run swings larger than the differences between them. What is consistent: the growth itself is small (13.0 MB for Rust, 22.8 MB for Go, 11.4 MB for ten Python workers) and none of them hands much back within 10 seconds.</li>
+                    <li><strong>Python's per-request CPU is close to Go's; its scaling is the cost.</strong> One Python worker spends 32 ms of CPU per 1,000 health checks; Go spends 29; Rust 21. uvloop, httptools and orjson are C, and the Python on the request path is thin. At ten workers the same code costs 83 ms per 1,000, because ten processes contend for ten cores with each other and with the load generator. The CPU columns for saturated runs include that contention for every implementation.</li>
+                    <li><strong>Per-item storage cost</strong> (RSS growth per inserted item on <code>create</code>): Rust 346 bytes, Go 397, Python 486. A Rust <code>String</code> plus <code>Vec&lt;String&gt;</code> per item is the leanest; a Python dict per item costs about twice as much.</li>
+                    <li><strong>Same contract, different error shapes.</strong> A non-numeric path id is a 400 with a plain-text message from Axum, a 400 JSON object from Go because I wrote it, and a 422 with a Pydantic error array from FastAPI. Wrong field types: Axum 422 as text, Go 400, FastAPI 422 as JSON. Go is the only one where every byte of the error surface is yours; the other two give you a framework's shape unless you override it.</li>
+                    <li><strong>Tokio's timer overshoots on macOS.</strong> A 10 ms sleep takes 12.3 ms at concurrency 1 and 12.3 ms at concurrency 64, so it is timer resolution, not load. I expect Linux to behave differently and have not checked.</li>
+                </ul>
+
+                <h2>What it costs</h2>
+                <figure>
+                    <img src="charts/07-complexity.gif" alt="Lines of code, dependencies, cold start and build time per implementation">
+                    <figcaption><a href="charts/07-complexity.png">Still</a>.</figcaption>
+                </figure>
+                <p>Rust and Go took the same number of lines for the same contract: 177 and 182. Python took 93. Rust ships 93 transitive crates; Go ships 0; Python 21 packages. A clean release build is 13.7 s for Rust with LTO on and 3.2 s for Go, and the gap widens with project size. Artifacts are 1.3 MB and 9.3 MB. Cold start to first healthy response: 10 ms for Rust, 13 ms for Go, 173 ms for one Python worker, 416 ms for ten.</p>
+                <p>Go is the honest competitor in this study. On ordinary endpoints its throughput is a tie with Rust: 166.2k against 163.6k requests per second on the lookup, within 10% on the list and the write. Its gaps are the CPU ceiling (1.9×), the p99 (2.2× on the lookup, 6.2× under CPU load), and the per-request CPU and memory (1.4× and 2.2×), all with zero dependencies, a 3.2-second build and the same line count. The reason to pick Rust over Go is the ceiling and the tail, not the throughput on the endpoints most services are made of.</p>
+
+                <h2>Every number in one place</h2>
+                <p>Medians of 4 runs. The full report with p95, p99.9, max, CPU utilisation, memory growth per request and the min–max spread per cell is <a href="https://github.com/pradnyaw25/api-performance-lab/blob/main/results/REPORT.md">in the repo</a>.</p>
+                <div class="scroll"><table>
+                    <tr><th>Scenario</th><th class="num">Rust req/s</th><th class="num">Go</th><th class="num">Python ×10</th><th class="num">Python ×1</th><th class="num">Rust p99 ms</th><th class="num">Go</th><th class="num">Python ×10</th><th class="num">Python ×1</th></tr>
+                    <tr><td>health</td><td class="num">164,679</td><td class="num">166,922</td><td class="num">74,144</td><td class="num">31,620</td><td class="num">1.02</td><td class="num">2.01</td><td class="num">5.97</td><td class="num">3.93</td></tr>
+                    <tr><td>get</td><td class="num">163,587</td><td class="num">166,172</td><td class="num">73,448</td><td class="num">28,809</td><td class="num">0.91</td><td class="num">1.98</td><td class="num">5.30</td><td class="num">4.35</td></tr>
+                    <tr><td>list</td><td class="num">60,248</td><td class="num">54,065</td><td class="num">37,508</td><td class="num">14,943</td><td class="num">2.34</td><td class="num">6.17</td><td class="num">8.00</td><td class="num">8.29</td></tr>
+                    <tr><td>create</td><td class="num">160,374</td><td class="num">140,492</td><td class="num">49,180</td><td class="num">19,738</td><td class="num">0.83</td><td class="num">2.13</td><td class="num">6.23</td><td class="num">6.29</td></tr>
+                    <tr><td>cpu</td><td class="num">20,468</td><td class="num">10,975</td><td class="num">3,135</td><td class="num">927</td><td class="num">6.16</td><td class="num">38.16</td><td class="num">53.84</td><td class="num">78.66</td></tr>
+                    <tr><td>io</td><td class="num">5,192</td><td class="num">5,598</td><td class="num">5,662</td><td class="num">5,445</td><td class="num">13.60</td><td class="num">12.70</td><td class="num">12.79</td><td class="num">14.58</td></tr>
+                    <tr><td>mixed</td><td class="num">8,641</td><td class="num">10,940</td><td class="num">10,174</td><td class="num">9,880</td><td class="num">9.20</td><td class="num">7.81</td><td class="num">8.07</td><td class="num">8.20</td></tr>
+                </table></div>
+                <div class="scroll"><table>
+                    <tr><th>Scenario</th><th class="num">Rust CPU ms/1k</th><th class="num">Go</th><th class="num">Python ×10</th><th class="num">Python ×1</th><th class="num">Rust peak MB</th><th class="num">Go</th><th class="num">Python ×10</th><th class="num">Python ×1</th></tr>
+                    <tr><td>health</td><td class="num">21</td><td class="num">29</td><td class="num">83</td><td class="num">32</td><td class="num">13.2</td><td class="num">30.0</td><td class="num">722.2</td><td class="num">69.2</td></tr>
+                    <tr><td>get</td><td class="num">22</td><td class="num">29</td><td class="num">96</td><td class="num">35</td><td class="num">13.4</td><td class="num">29.8</td><td class="num">719.3</td><td class="num">67.6</td></tr>
+                    <tr><td>list</td><td class="num">127</td><td class="num">123</td><td class="num">186</td><td class="num">67</td><td class="num">15.2</td><td class="num">30.2</td><td class="num">716.7</td><td class="num">67.7</td></tr>
+                    <tr><td>create</td><td class="num">24</td><td class="num">36</td><td class="num">144</td><td class="num">51</td><td class="num">824.9</td><td class="num">777.3</td><td class="num">987.1</td><td class="num">202.8</td></tr>
+                    <tr><td>cpu</td><td class="num">418</td><td class="num">650</td><td class="num">3,026</td><td class="num">1,101</td><td class="num">13.3</td><td class="num">40.1</td><td class="num">732.5</td><td class="num">71.0</td></tr>
+                    <tr><td>io</td><td class="num">31</td><td class="num">64</td><td class="num">110</td><td class="num">64</td><td class="num">13.2</td><td class="num">26.5</td><td class="num">719.5</td><td class="num">67.8</td></tr>
+                    <tr><td>mixed</td><td class="num">72</td><td class="num">103</td><td class="num">117</td><td class="num">84</td><td class="num">13.6</td><td class="num">27.3</td><td class="num">720.5</td><td class="num">67.9</td></tr>
+                </table></div>
+                <p>The <code>create</code> row's memory is the store growing by roughly two million items during the run, not the runtime; the per-item cost is the fairer comparison and is above.</p>
+
+                <h2>So what should you pick</h2>
+                <ul>
+                    <li><strong>Your service computes on the request path</strong> (hashing, compression, parsing, scoring, anything that saturates a core): Rust. 1.9× Go, 6.5× Python, and the only one that met the deadline for every request under overload.</li>
+                    <li><strong>Your SLO is on p99, not the median:</strong> Rust. It is the only one of the three whose tail stays near 2× its median under load.</li>
+                    <li><strong>Your service mostly waits on a database or another service:</strong> the language does not decide your latency. Pick for the team, then pay the memory and CPU bill, which is roughly 2× for Go and 72× for ten-worker Python relative to Rust.</li>
+                    <li><strong>You need shared in-memory state across all cores:</strong> Rust or Go. Python will need Redis for what the other two get from a mutex.</li>
+                    <li><strong>You want most of Rust's density without its dependency graph and build times:</strong> Go.</li>
+                </ul>
+                <p>Read against Anthropic's post, the shape fits. Their service is CPU-heavy per request (parsing and streaming tokens), which is the column where this study finds Rust's largest advantage, and their 70% CPU reduction sits inside the range this lab measured between tuned Python and Rust on CPU-bound and serialization work. That is a consistency check, not a prediction; their numbers come from production traffic at a scale this experiment does not approach.</p>
+
+                <h2>Caveats</h2>
+                <ul>
+                    <li><strong>Small scale.</strong> One laptop, 10-second windows, 4 runs, synthetic endpoints, no database. This is not production-level load of a large service, and it is not a migration study.</li>
+                    <li><strong>Shared machine, and laptop noise.</strong> The load generator competes with the service for the same ten cores, which inflates CPU-per-request for every saturated run and caps absolute throughput for all of them equally. Run to run, Rust's lookup throughput swung from 138.7k–186.5k requests per second and its p99 from 0.71–2.04 ms, more than Go's spread, which is why every number here is a median of 4 runs with the range in the report, and why Rust against Go on those endpoints is reported as a tie rather than a win.</li>
+                    <li><strong>macOS.</strong> <code>somaxconn</code> is 128 and Tokio's timer behaves differently from Linux. A Linux box with a separate load generator would change the absolute numbers and, I expect, none of the rankings.</li>
+                    <li><strong>In-memory store.</strong> Phase 2 is the same contract on PostgreSQL, where driver and connection-pool quality start to dominate and the gaps should narrow again.</li>
+                    <li><strong>Sampling.</strong> Memory is read from <code>ps</code> four times a second, so sub-250 ms spikes can be missed.</li>
+                </ul>
+
+                <h2>Reproduce it</h2>
+                <pre><code>git clone https://github.com/pradnyaw25/api-performance-lab
+cd api-performance-lab
+brew install go oha          # plus a Rust toolchain
+make setup build             # python venv, cargo + go release builds
+make contract                # the gate: every implementation must pass
+make bench                   # ~12 minutes -> results/&lt;run&gt;/REPORT.md
+python3 bench/aggregate.py results/&lt;run-a&gt; results/&lt;run-b&gt; -o results/aggregate
+python3 bench/charts.py results/aggregate   # the PNGs and GIFs in this post</code></pre>
+                <p class="foot">Code, harness, raw <code>oha</code> output, the untuned baseline run and the 4 final runs: <a href="https://github.com/pradnyaw25/api-performance-lab">github.com/pradnyaw25/api-performance-lab</a>. If a configuration is unfair to your favourite language, open an issue. That is what the contract test is for.</p>
+            </article>
+        </main>
+    </body>
+</html>
