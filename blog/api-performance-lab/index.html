@@ -197,10 +197,6 @@
                 <p>Go is the honest competitor in this study. On ordinary endpoints its throughput is a tie with Rust: 166.2k against 163.6k requests per second on the lookup, within 10% on the list and the write. Its gaps are the CPU ceiling (1.9×), the p99 (2.2× on the lookup, 6.2× under CPU load), and the per-request CPU and memory (1.4× and 2.2×), all with zero dependencies, a 3.2-second build and the same line count. The reason to pick Rust over Go is the ceiling and the tail, not the throughput on the endpoints most services are made of.</p>
 
                 <h2>Every number in one place</h2>
-                <figure>
-                    <img src="charts/01-where-rust-wins.png" alt="Heatmap: every language compared to Rust on every workload, for throughput, p99, CPU and memory">
-                    <figcaption>The full matrix. Each cell is one language measured against the Rust baseline on the same workload. Blue: Rust did better by that factor. Orange: the other language did better. Grey: no real difference.</figcaption>
-                </figure>
                 <p>Medians of 4 runs. The full report with p95, p99.9, max, CPU utilisation, memory growth per request and the min–max spread per cell is <a href="https://github.com/pradnyaw25/api-performance-lab/blob/main/results/REPORT.md">in the repo</a>.</p>
                 <div class="scroll"><table>
                     <tr><th>Scenario</th><th class="num">Rust req/s</th><th class="num">Go</th><th class="num">Python ×10</th><th class="num">Python ×1</th><th class="num">Rust p99 ms</th><th class="num">Go</th><th class="num">Python ×10</th><th class="num">Python ×1</th></tr>
