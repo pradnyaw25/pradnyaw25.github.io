@@ -7,6 +7,18 @@
         <title>Pradnya Wakchaure</title>
         <meta name="description" content="Personal site for Pradnya Wakchaure, a software engineer based in New York City.">
         <meta name="viewport" content="width=device-width, initial-scale=1">
+
+        <!-- Social share cards (Open Graph + Twitter) -->
+        <meta property="og:type" content="website">
+        <meta property="og:site_name" content="Pradnya Wakchaure">
+        <meta property="og:title" content="Pradnya Wakchaure — Software Engineer, NYC">
+        <meta property="og:description" content="Software engineer in New York City, interested in distributed systems, AI tooling, and building things that scale.">
+        <meta property="og:url" content="https://pradnya.dev/">
+        <meta property="og:image" content="https://pradnya.dev/img/badge_photo_hq.jpeg">
+        <meta name="twitter:card" content="summary">
+        <meta name="twitter:title" content="Pradnya Wakchaure — Software Engineer, NYC">
+        <meta name="twitter:description" content="Software engineer in New York City, interested in distributed systems, AI tooling, and building things that scale.">
+        <meta name="twitter:image" content="https://pradnya.dev/img/badge_photo_hq.jpeg">
         <link rel="apple-touch-icon" href="apple-touch-icon.png">
 
         <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -58,7 +70,7 @@
                         <span>GitHub</span>
                     </a>
                     <a class="social-link" href="https://www.twitter.com/pradnyaw25" target="_blank" rel="noopener noreferrer">
-                        <img src="img/icons/twitter.svg" alt="" aria-hidden="true">
+                        <img src="img/icons/x.svg" alt="" aria-hidden="true">
                         <span>X</span>
                     </a>
                     <a class="social-link" href="https://www.instagram.com/pradnyaw25" target="_blank" rel="noopener noreferrer">
@@ -88,11 +100,18 @@
                 </div>
             </section>
 
+            <section class="blog" aria-labelledby="blog-title">
+                <h2 id="blog-title" class="section-head">Blog</h2>
+                <ul class="post-list">
+                    <li><a href="/blog/api-performance-lab/"><span class="post-date">Nov 27, 2026</span><span class="post-title">Benchmarking API Performance: Python vs Go vs Rust</span></a></li>
+                </ul>
+            </section>
+
             <section class="digest" aria-labelledby="digest-title">
                 <h2 id="digest-title" class="section-head">Weekend Engineering Digest</h2>
                 <p class="blog-intro">
                     <a href="https://digest.pradnya.dev/" target="_blank" rel="noopener noreferrer">digest.pradnya.dev</a>
-                    is a weekly five-minute read on distributed systems, architecture, and AI infrastructure. Every issue so far:
+                    is a weekly five-minute read on distributed systems, architecture, and AI infrastructure. Recent issues:
                 </p>
                 <!-- Static fallback; js below refreshes this list from the digest's RSS feed so new issues appear automatically. -->
                 <ul class="post-list" id="digest-issues">
@@ -104,13 +123,6 @@
                     &nbsp;·&nbsp;
                     <a href="https://digest.pradnya.dev/rss.xml" target="_blank" rel="noopener noreferrer">RSS</a>
                 </p>
-            </section>
-
-            <section class="blog" aria-labelledby="blog-title">
-                <h2 id="blog-title" class="section-head">Blog</h2>
-                <ul class="post-list">
-                    <li><a href="/blog/api-performance-lab/"><span class="post-date">Nov 27, 2026</span><span class="post-title">Benchmarking API Performance: Python vs Go vs Rust</span></a></li>
-                </ul>
             </section>
         </main>
         <script src="//ajax.googleapis.com/ajax/libs/jquery/1.11.2/jquery.min.js"></script>
@@ -129,7 +141,7 @@
                         var items = new DOMParser().parseFromString(xml, 'application/xml').querySelectorAll('item');
                         if (!items.length) return;
                         var frag = document.createDocumentFragment();
-                        Array.prototype.forEach.call(items, function (item) {
+                        Array.prototype.slice.call(items, 0, 5).forEach(function (item) {
                             var get = function (tag) { var n = item.querySelector(tag); return n ? n.textContent.trim() : ''; };
                             var link = get('link'), title = get('title'), d = new Date(get('pubDate'));
                             if (!link || !title) return;
